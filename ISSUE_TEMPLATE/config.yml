@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability report
+    url: https://github.com/Xero-Team/.github/security/policy
+    about: Report a security vulnerability privately. Do NOT open a public issue for security problems.
+  - name: Discussions
+    url: https://github.com/orgs/Xero-Team/discussions
+    about: Ask questions and discuss ideas in the organization Discussions.

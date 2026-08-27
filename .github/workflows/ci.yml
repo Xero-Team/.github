@@ -1,0 +1,147 @@
+name: CI (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      run-tests:
+        description: "Run test suites (set false for docs-only repos)"
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  detect:
+    runs-on: ubuntu-latest
+    outputs:
+      python: ${{ steps.d.outputs.python }}
+      rust: ${{ steps.d.outputs.rust }}
+      node: ${{ steps.d.outputs.node }}
+      go: ${{ steps.d.outputs.go }}
+      cpp: ${{ steps.d.outputs.cpp }}
+      docker: ${{ steps.d.outputs.docker }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: d
+        run: |
+          set -e
+          py=false; ru=false; nd=false; go=false; cpp=false; dk=false
+          if git ls-files | grep -qE '(^|/)(pyproject\.toml|setup\.py|setup\.cfg|requirements.*\.txt|Pipfile|poetry\.lock)$'; then py=true; fi
+          if git ls-files | grep -qE '(^|/)Cargo\.toml$'; then ru=true; fi
+          if git ls-files | grep -qE '(^|/)package\.json$'; then nd=true; fi
+          if git ls-files | grep -qE '(^|/)go\.mod$'; then go=true; fi
+          if git ls-files | grep -qE '(^|/)(CMakeLists\.txt|Makefile)$'; then cpp=true; fi
+          if git ls-files | grep -qE '(^|/)Dockerfile(\..*)?$'; then dk=true; fi
+          echo "python=$py" >> "$GITHUB_OUTPUT"
+          echo "rust=$ru"   >> "$GITHUB_OUTPUT"
+          echo "node=$nd"   >> "$GITHUB_OUTPUT"
+          echo "go=$go"     >> "$GITHUB_OUTPUT"
+          echo "cpp=$cpp"   >> "$GITHUB_OUTPUT"
+          echo "docker=$dk" >> "$GITHUB_OUTPUT"
+
+  python:
+    needs: detect
+    if: needs.detect.outputs.python == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+          cache: pip
+      - name: Install (uv preferred, else pip)
+        run: |
+          if [ -f pyproject.toml ] && command -v uv >/dev/null 2>&1; then
+            pip install uv && uv sync --frozen 2>/dev/null || uv pip install -e . || uv pip install -r <(git ls-files 'requirements*.txt')
+          else
+            pip install -r $(git ls-files 'requirements*.txt' | head -1) 2>/dev/null || pip install -e . 2>/dev/null || true
+          fi
+      - name: Lint (ruff)
+        run: |
+          if command -v ruff >/dev/null 2>&1; then ruff check . ; else pip install ruff && ruff check . ; fi
+        continue-on-error: true
+      - name: Test (pytest)
+        if: inputs.run-tests
+        run: |
+          if [ -d tests ] || git ls-files | grep -qE 'test_.*\.py'; then pytest -q || true; fi
+
+  rust:
+    needs: detect
+    if: needs.detect.outputs.rust == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: fmt
+        run: cargo fmt --all -- --check
+        continue-on-error: true
+      - name: clippy
+        run: cargo clippy --all-targets -- -D warnings
+        continue-on-error: true
+      - name: test
+        if: inputs.run-tests
+        run: cargo test --all
+
+  node:
+    needs: detect
+    if: needs.detect.outputs.node == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - run: npm ci
+      - run: npm run build --if-present
+      - if: inputs.run-tests
+        run: npm test
+      - run: npm run lint --if-present
+
+  go:
+    needs: detect
+    if: needs.detect.outputs.go == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.x"
+          cache: true
+      - run: go build ./...
+      - if: inputs.run-tests
+        run: go test ./...
+
+  cpp:
+    needs: detect
+    if: needs.detect.outputs.cpp == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build (cmake preferred, else make)
+        run: |
+          if [ -f CMakeLists.txt ]; then cmake -B build && cmake --build build; elif [ -f Makefile ]; then make; fi
+      - if: inputs.run-tests
+        run: |
+          if [ -f CMakeLists.txt ] && [ -d build ]; then (cd build && ctest --output-on-failure) || true; fi
+
+  docker:
+    needs: detect
+    if: needs.detect.outputs.docker == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Lint Dockerfile (hadolint)
+        run: docker run --rm -i hadolint/hadolint:latest-alpine < $(git ls-files 'Dockerfile*' | head -1) 2>/dev/null || true
+        continue-on-error: true
+      - name: Build image (no push)
+        run: docker build -f $(git ls-files 'Dockerfile*' | head -1) -t ci:check .

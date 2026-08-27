@@ -1,0 +1,6 @@
+{
+  "name": "Xero CI (auto-detect)",
+  "description": "Polyglot CI: auto-detects Python/Rust/Node/Go/C++/Docker and runs build+test+lint. Maintained by Xero-Team.",
+  "iconName": "xero-ci",
+  "categories": ["Continuous integration", "Xero-Team"]
+}

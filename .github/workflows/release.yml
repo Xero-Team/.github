@@ -1,0 +1,46 @@
+name: Release (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        description: "Tag to release (defaults to the triggering tag or GITHUB_REF)"
+        required: false
+        default: ""
+        type: string
+      generate_artifacts:
+        description: "Whether to try building artifacts (cargo/npm/go) before release"
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Resolve tag
+        id: t
+        run: echo "tag=${{ inputs.tag != '' && inputs.tag || github.ref_name }}" >> "$GITHUB_OUTPUT"
+      - name: Build artifacts
+        if: inputs.generate_artifacts
+        run: |
+          mkdir -p artifacts
+          if [ -f Cargo.toml ]; then
+            cargo build --release && cp target/release/* artifacts/ 2>/dev/null || true
+          elif [ -f package.json ]; then
+            npm ci && npm run build --if-present && cp -r dist/* artifacts/ 2>/dev/null || true
+          elif [ -f go.mod ]; then
+            go build -o artifacts/ ./... 2>/dev/null || true
+          fi
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.t.outputs.tag }}
+          generate_release_notes: true
+          files: |
+            artifacts/*

@@ -1,0 +1,14 @@
+name: Xero CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    uses: Xero-Team/.github/.github/workflows/ci.yml@main
+    secrets: inherit

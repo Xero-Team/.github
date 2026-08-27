@@ -1,0 +1,6 @@
+{
+  "name": "Xero Release (tag-driven)",
+  "description": "Create a GitHub Release with auto-generated notes when a v* tag is pushed. Maintained by Xero-Team.",
+  "iconName": "xero-release",
+  "categories": ["Deployment", "Releases", "Xero-Team"]
+}

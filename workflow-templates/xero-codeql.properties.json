@@ -1,0 +1,6 @@
+{
+  "name": "Xero CodeQL (auto-detect)",
+  "description": "GitHub CodeQL security analysis with auto language detection. Maintained by Xero-Team.",
+  "iconName": "xero-codeql",
+  "categories": ["Code scanning", "Security", "Xero-Team"]
+}

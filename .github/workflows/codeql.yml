@@ -1,0 +1,45 @@
+name: CodeQL (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      languages:
+        description: "Comma-separated, e.g. 'python,javascript-typescript,go,rust,c-cpp' or 'auto'"
+        required: false
+        default: "auto"
+        type: string
+
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Resolve languages
+        id: lg
+        run: |
+          if [ "${{ inputs.languages }}" = "auto" ]; then
+            langs=""
+            git ls-files | grep -qE '(^|/)(pyproject\.toml|setup\.py|requirements.*\.txt)$' && langs="$langs,python"
+            git ls-files | grep -qE '(^|/)package\.json$' && langs="$langs,javascript-typescript"
+            git ls-files | grep -qE '(^|/)go\.mod$' && langs="$langs,go"
+            git ls-files | grep -qE '(^|/)Cargo\.toml$' && langs="$langs,rust"
+            git ls-files | grep -qE '(^|/)(CMakeLists\.txt|Makefile)$' && langs="$langs,c-cpp"
+            langs="${langs#,}"
+          else
+            langs="${{ inputs.languages }}"
+          fi
+          echo "languages=$langs" >> "$GITHUB_OUTPUT"
+      - uses: github/codeql-action/init@v3
+        if: steps.lg.outputs.languages != ''
+        with:
+          languages: ${{ steps.lg.outputs.languages }}
+      - uses: github/codeql-action/autobuild@v3
+        if: steps.lg.outputs.languages != ''
+        continue-on-error: true
+      - uses: github/codeql-action/analyze@v3
+        if: steps.lg.outputs.languages != ''
